@@ -1191,9 +1191,10 @@ changes:
       used for generated code.
     * `stackSizeMb` {number} The default maximum stack size for the thread.
       Small values may lead to unusable Worker instances. **Default:** `4`.
-  * `name` {string} An optional `name` to be appended to the worker title
-    for debugging/identification purposes, making the final title as
-    `[worker ${id}] ${name}`. **Default:** `''`.
+  * `name` {string} An optional `name` to be replaced in the thread name
+    and to the worker title for debugging/identification purposes,
+    making the final title as `[worker ${id}] ${name}`.
+    **Default:** `'WorkerThread'`.
 
 ### Event: `'error'`
 
