@@ -1,6 +1,6 @@
 #include <node.h>
-#include <v8.h>
 #include <uv.h>
+#include <v8.h>
 
 using v8::FunctionCallbackInfo;
 using v8::Isolate;
