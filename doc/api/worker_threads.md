@@ -1194,7 +1194,13 @@ changes:
   * `name` {string} An optional `name` to be replaced in the thread name
     and to the worker title for debugging/identification purposes,
     making the final title as `[worker ${id}] ${name}`.
-    **Default:** `'WorkerThread'`.
+    This parameter has a maximum allowed size, depending on the operating
+    system. If the provided name exceeds the limit, it will be truncated
+    * Maximum sizes:
+      * Windows: 32,767 characters
+      * macOS: 64 characters
+      * Other systems: 16 characters
+        **Default:** `'WorkerThread'`.
 
 ### Event: `'error'`
 
