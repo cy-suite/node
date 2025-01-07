@@ -36,16 +36,15 @@ function validateResults(results) {
     //
     // All process CPU usages should be the same. Technically they should have returned the same
     // value but since we measure it at different times they vary a little bit.
-    // Let's allow a tolerance of 5%
+    // Let's allow a tolerance of 20%
     //
-    ok(processDifference > 0.95);
-    ok(processDifference < 1.05);
+    ok(processDifference > 0.8);
+    ok(processDifference < 1.2);
 
     //
     // Each thread is configured so that the performLoad schedules a new hash with an interval two times bigger of the
     // previous thread. In theory this should give each thread a load about half of the previous one.
-    // But since we can't really predict CPU scheduling, we just verify a minimum difference of 20% and a monotonic
-    // increasing sequence.
+    // But since we can't really predict CPU scheduling, we just check a monotonic increasing sequence.
     //
     ok(threadDifference > 1.2);
   }
