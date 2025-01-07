@@ -147,8 +147,9 @@ static void ThreadCPUUsage(const FunctionCallbackInfo<Value>& args) {
   double* fields = static_cast<double*>(ab->Data());
 
 #if defined(_WIN32)
-  // On Windows, GetCurrentThread will return the current thread pseudo-handler, which is then
-  // used in GetThreadTimes to retrieve the current thread timing information.
+  // On Windows, GetCurrentThread will return the current thread pseudo-handler,
+  // which is then used in GetThreadTimes to retrieve the current thread timing
+  // information.
   // The documentation is accessible here:
   // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthread
   // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getthreadtimes
@@ -189,11 +190,11 @@ static void ThreadCPUUsage(const FunctionCallbackInfo<Value>& args) {
   fields[0] =
       MICROS_PER_SEC * usage.user_time.seconds + usage.user_time.microseconds;
   fields[1] = MICROS_PER_SEC * usage.system_time.seconds +
-              usage.system_time.microseconds;                          
+              usage.system_time.microseconds;
 #else
-  // On other Unix / Linux, getrusage(2) with RUSAGE_THREAD is used to get 
-  // the current thread CPU usage. 
-  // The documentation is accessible by running man getrusage. 
+  // On other Unix / Linux, getrusage(2) with RUSAGE_THREAD is used to get
+  // the current thread CPU usage.
+  // The documentation is accessible by running man getrusage.
   struct rusage usage;
 
   if (getrusage(RUSAGE_THREAD, &usage) == -1) {
