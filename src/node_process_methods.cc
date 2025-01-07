@@ -27,12 +27,14 @@
 #if defined(_MSC_VER)
 #include <direct.h>
 #include <io.h>
+#include <process.h>
 #define umask _umask
 typedef int mode_t;
 #else
 #include <pthread.h>
 #include <sys/resource.h>  // getrlimit, setrlimit
 #include <termios.h>  // tcgetattr, tcsetattr
+#include <unistd.h>
 #endif
 
 namespace node {
@@ -471,6 +473,125 @@ static void ReallyExit(const FunctionCallbackInfo<Value>& args) {
   env->Exit(code);
 }
 
+inline char** copy_js_strings_array(Environment* env,
+                                    Local<Array> js_array,
+                                    int* target_length) {
+  Local<Context> context = env->context();
+  char** target = nullptr;
+  int length = js_array->Length();
+
+  CHECK_LT(length, INT_MAX);
+
+  target = new char*[length + 1];
+  target[length] = nullptr;
+
+  if (length > 0) {
+    for (int i = 0; i < length; i++) {
+      node::Utf8Value str(env->isolate(),
+                          js_array->Get(context, i).ToLocalChecked());
+      target[i] = strdup(*str);
+      CHECK_NOT_NULL(target[i]);
+    }
+  }
+
+  if (target_length) {
+    *target_length = length;
+  }
+
+  return target;
+}
+
+#ifdef __POSIX__
+inline int persist_standard_stream(int fd) {
+  int flags = fcntl(fd, F_GETFD, 0);
+
+  if (flags < 0) {
+    return flags;
+  }
+
+  flags &= ~FD_CLOEXEC;
+  return fcntl(fd, F_SETFD, flags);
+}
+
+static void Execve(const FunctionCallbackInfo<Value>& args) {
+  Environment* env = Environment::GetCurrent(args);
+  Local<Context> context = env->context();
+
+  THROW_IF_INSUFFICIENT_PERMISSIONS(
+      env, permission::PermissionScope::kChildProcess, "");
+
+  CHECK_GT(args.Length(), 1);
+  CHECK(args[0]->IsString());
+
+  // Prepare arguments and environment
+  char** argv = nullptr;
+  char** envp = nullptr;
+  int envp_length = 0;
+
+  // Prepare arguments - Note that the pathname is always the first argument
+  if (args.Length() > 1) {
+    CHECK(args[1]->IsArray());
+
+    Local<Array> argv_array = args[1].As<Array>();
+
+    Local<Array> full_argv_array =
+        Array::New(env->isolate(), argv_array->Length() + 1);
+    full_argv_array->Set(context, 0, args[0].As<String>()).Check();
+    for (unsigned int i = 0; i < argv_array->Length(); i++) {
+      full_argv_array
+          ->Set(context, i + 1, argv_array->Get(context, i).ToLocalChecked())
+          .Check();
+    }
+
+    argv = copy_js_strings_array(env, full_argv_array, nullptr);
+  } else {
+    Utf8Value pathname_string(env->isolate(), args[0].As<String>());
+
+    argv = new char*[2];
+    argv[0] = new char[pathname_string.length()];
+    argv[1] = nullptr;
+
+    memcpy(argv[0], *pathname_string, pathname_string.length());
+  }
+
+  if (args.Length() > 2) {
+    CHECK(args[2]->IsArray());
+    envp = copy_js_strings_array(env, args[2].As<Array>(), &envp_length);
+  }
+
+  // Set stdin, stdout and stderr to be non-close-on-exec
+  // so that the new process will inherit it.
+  for (int i = 0; i < 3; i++) {
+    // Operation failed. Free up memory, then throw.
+    if (persist_standard_stream(i) < 0) {
+      int error_code = errno;
+      delete[] argv;
+
+      if (envp_length > 0) {
+        delete[] envp;
+      }
+
+      THROW_ERR_PROCESS_EXECVE_FAILED(env, error_code);
+    }
+  }
+
+  // Perform the execve operation.
+  // If it returns, it means that the execve operation failed.
+  RunAtExit(env);
+  execve(argv[0], argv, envp);
+  int error_code = errno;
+
+  // Free up memory, then throw.
+  delete[] argv;
+
+  if (envp_length > 0) {
+    delete[] envp;
+  }
+
+  THROW_ERR_PROCESS_EXECVE_FAILED(env, error_code);
+}
+#endif
+
 static void LoadEnvFile(const v8::FunctionCallbackInfo<v8::Value>& args) {
   Environment* env = Environment::GetCurrent(args);
   std::string path = ".env";
@@ -662,6 +783,10 @@ static void CreatePerIsolateProperties(IsolateData* isolate_data,
   SetMethodNoSideEffect(isolate, target, "cwd", Cwd);
   SetMethod(isolate, target, "dlopen", binding::DLOpen);
   SetMethod(isolate, target, "reallyExit", ReallyExit);
+
+#ifdef __POSIX__
+  SetMethod(isolate, target, "execve", Execve);
+#endif
   SetMethodNoSideEffect(isolate, target, "uptime", Uptime);
   SetMethod(isolate, target, "patchProcessObject", PatchProcessObject);
 
@@ -704,6 +829,10 @@ void RegisterExternalReferences(ExternalReferenceRegistry* registry) {
   registry->Register(Cwd);
   registry->Register(binding::DLOpen);
   registry->Register(ReallyExit);
+
+#ifdef __POSIX__
+  registry->Register(Execve);
+#endif
   registry->Register(Uptime);
   registry->Register(PatchProcessObject);
 

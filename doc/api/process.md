@@ -3303,6 +3303,30 @@ In custom builds from non-release versions of the source tree, only the
 `name` property may be present. The additional properties should not be
 relied upon to exist.
 
+## \`process.execve(file\[, args\[, env]])\`
+
+<!-- YAML
+added: REPLACEME
+-->
+
+* `file` {string} The name or path of the executable file to run.
+* `args` {string\[]} List of string arguments. No argument can contain a null-byte (`\u0000`).
+* `env` {Object} Environment key-value pairs.
+  No key or value can contain a null-byte (`\u0000`).
+  **Default:** `process.env`.
+
+Replaces the current process with a new process.
+
+This is achieved by using the `execve` Unix function and therefore no memory or other
+resources from the current process are preserved, except for the standard input,
+standard output and standard error file descriptor.
+
+All other resources are discarded by system when the processes are swapped.
+
+This function will never return, unless an error occurred.
+
+This function is only available on POSIX platforms (i.e. not Windows or Android).
+
 ## `process.report`
 
 <!-- YAML

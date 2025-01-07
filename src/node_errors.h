@@ -13,6 +13,11 @@
 #include <sstream>
 
 namespace node {
+// This forward declaration is required to have the method
+// available in error messages.
+namespace errors {
+const char* errno_string(int errorno);
+}
 
 enum ErrorHandlingMode { CONTEXTIFY_ERROR, FATAL_ERROR, MODULE_ERROR };
 void AppendExceptionLine(Environment* env,
@@ -111,7 +116,8 @@ void OOMErrorHandler(const char* location, const v8::OOMDetails& details);
   V(ERR_WASI_NOT_STARTED, Error)                                               \
   V(ERR_ZLIB_INITIALIZATION_FAILED, Error)                                     \
   V(ERR_WORKER_INIT_FAILED, Error)                                             \
-  V(ERR_PROTO_ACCESS, Error)
+  V(ERR_PROTO_ACCESS, Error)                                                   \
+  V(ERR_PROCESS_EXECVE_FAILED, Error)
 
 #define V(code, type)                                                          \
   template <typename... Args>                                                  \
@@ -251,6 +257,15 @@ inline v8::Local<v8::Object> ERR_STRING_TOO_LONG(v8::Isolate* isolate) {
       "Cannot create a string longer than 0x%x characters",
       v8::String::kMaxLength);
   return ERR_STRING_TOO_LONG(isolate, message);
+}
+
+inline void THROW_ERR_PROCESS_EXECVE_FAILED(Environment* env, int code) {
+  char message[128];
+  snprintf(message,
+           sizeof(message),
+           "process.execve failed with error code %s",
+           errors::errno_string(code));
+  THROW_ERR_PROCESS_EXECVE_FAILED(env, message);
 }
 
 #define THROW_AND_RETURN_IF_NOT_BUFFER(env, val, prefix)                     \
