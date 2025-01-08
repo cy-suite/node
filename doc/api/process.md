@@ -3321,7 +3321,8 @@ This is achieved by using the `execve` Unix function and therefore no memory or 
 resources from the current process are preserved, except for the standard input,
 standard output and standard error file descriptor.
 
-All other resources are discarded by system when the processes are swapped.
+All other resources are discarded by the system when the processes are swapped, without triggering
+any exit or close events and without running any cleanup handler.
 
 This function will never return, unless an error occurred.
 
