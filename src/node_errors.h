@@ -260,12 +260,9 @@ inline v8::Local<v8::Object> ERR_STRING_TOO_LONG(v8::Isolate* isolate) {
 }
 
 inline void THROW_ERR_PROCESS_EXECVE_FAILED(Environment* env, int code) {
-  char message[128];
-  snprintf(message,
-           sizeof(message),
-           "process.execve failed with error code %s",
-           errors::errno_string(code));
-  THROW_ERR_PROCESS_EXECVE_FAILED(env, message);
+  auto message = std::string("process.execve failed with error code ") +
+                 errors::errno_string(code);
+  THROW_ERR_PROCESS_EXECVE_FAILED(env, message.c_str());
 }
 
 #define THROW_AND_RETURN_IF_NOT_BUFFER(env, val, prefix)                     \

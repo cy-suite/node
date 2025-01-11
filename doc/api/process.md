@@ -2486,8 +2486,7 @@ if (process.getuid) {
 }
 ```
 
-This function is only available on POSIX platforms (i.e. not Windows or
-Android).
+This function not available on Windows.
 
 ## `process.hasUncaughtExceptionCaptureCallback()`
 

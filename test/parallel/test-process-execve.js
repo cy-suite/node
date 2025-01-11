@@ -17,7 +17,7 @@ if (process.argv[2] === 'replaced') {
 } else {
   process.execve(
     process.execPath,
-    [__filename, 'replaced'],
+    [process.execPath, __filename, 'replaced'],
     { EXECVE_A: 'FIRST', EXECVE_B: 'SECOND', CWD: process.cwd() }
   );
 
