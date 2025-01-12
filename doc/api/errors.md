@@ -2445,13 +2445,6 @@ An invalid timestamp value was provided for a performance mark or measure.
 
 Invalid options were provided for a performance measure.
 
-<a id="ERR_PROCESS_EXECVE_FAILED"></a>
-
-### `ERR_PROCESS_EXECVE_FAILED`
-
-Replacing the current process with [`process.execve()`][] has failed due to some
-system error.
-
 <a id="ERR_PROTO_ACCESS"></a>
 
 ### `ERR_PROTO_ACCESS`
@@ -4270,7 +4263,6 @@ An error occurred trying to allocate memory. This should never happen.
 [`package.json`]: packages.md#nodejs-packagejson-field-definitions
 [`postMessage()`]: worker_threads.md#portpostmessagevalue-transferlist
 [`postMessageToThread()`]: worker_threads.md#workerpostmessagetothreadthreadid-value-transferlist-timeout
-[`process.execve()`]: process.md#processexecvefile-args-env
 [`process.on('exit')`]: process.md#event-exit
 [`process.send()`]: process.md#processsendmessage-sendhandle-options-callback
 [`process.setUncaughtExceptionCaptureCallback()`]: process.md#processsetuncaughtexceptioncapturecallbackfn

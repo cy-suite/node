@@ -508,38 +508,56 @@ static void Execve(const FunctionCallbackInfo<Value>& args) {
   std::vector<char*> envp(envp_array->Length() + 1);
 
   for (unsigned int i = 0; i < argv_array->Length(); i++) {
-    argv_strings[i] =
-        Utf8Value(isolate, argv_array->Get(context, i).ToLocalChecked())
-            .ToString();
+    Local<Value> str;
+    if (!argv_array->Get(context, i).ToLocal(&str)) {
+      THROW_ERR_INVALID_ARG_VALUE(env, "Failed to deserialize argument.");
+      return;
+    }
+
+    argv_strings[i] = Utf8Value(isolate, str).ToString();
     argv[i] = argv_strings[i].data();
   }
   argv[argv_array->Length()] = nullptr;
 
   for (unsigned int i = 0; i < envp_array->Length(); i++) {
-    envp_strings[i] =
-        Utf8Value(isolate, envp_array->Get(context, i).ToLocalChecked())
-            .ToString();
+    Local<Value> str;
+    if (!envp_array->Get(context, i).ToLocal(&str)) {
+      THROW_ERR_INVALID_ARG_VALUE(
+          env, "Failed to deserialize environment variable.");
+      return;
+    }
+
+    envp_strings[i] = Utf8Value(isolate, str).ToString();
     envp[i] = envp_strings[i].data();
   }
+
   envp[envp_array->Length()] = nullptr;
 
   // Set stdin, stdout and stderr to be non-close-on-exec
   // so that the new process will inherit it.
-  for (int i = 0; i < 3; i++) {
-    // Operation failed. Free up memory, then throw.
-    if (persist_standard_stream(i) < 0) {
-      THROW_ERR_PROCESS_EXECVE_FAILED(env, errno);
-    }
+  if (persist_standard_stream(0) < 0 || persist_standard_stream(1) < 0 ||
+      persist_standard_stream(2) < 0) {
+    env->ThrowErrnoException(errno, "fcntl");
   }
 
   // Perform the execve operation.
-  // If it returns, it means that the execve operation failed.
   RunAtExit(env);
-
   execve(*executable, argv.data(), envp.data());
-  int error_code = errno;
 
-  THROW_ERR_PROCESS_EXECVE_FAILED(env, error_code);
+  // If it returns, it means that the execve operation failed.
+  // In that case we abort the process.
+  auto error_message = std::string("process.execve failed with error code ") +
+                       errors::errno_string(errno);
+
+  // Abort the process
+  Local<v8::Value> exception =
+      ErrnoException(isolate, errno, "execve", *executable);
+  Local<v8::Message> message = v8::Exception::CreateMessage(isolate, exception);
+
+  std::string info = FormatErrorMessage(
+      isolate, context, error_message.c_str(), message, true);
+  FPrintF(stderr, "%s\n", info);
+  ABORT();
 }
 #endif
 
