@@ -415,6 +415,21 @@ function:
 * [`Buffer.from(arrayBuffer[, byteOffset[, length]])`][`Buffer.from(arrayBuf)`]
 * [`Buffer.from(string[, encoding])`][`Buffer.from(string)`]
 
+### Buffer methods are callable with `Uint8Array` instances
+
+All methods on the Buffer prototype are callable with a `Uint8Array` instance.
+
+```js
+const { toString, write } = Buffer.prototype;
+
+const uint8array = new Uint8Array(5);
+
+write.call(uint8array, 'hello', 0, 5, 'utf8'); // 5
+// <Uint8Array 68 65 6c 6c 6f>
+
+toString.call(uint8array, 'utf8'); // 'hello'
+```
+
 ## Buffers and iteration
 
 `Buffer` instances can be iterated over using `for..of` syntax:
