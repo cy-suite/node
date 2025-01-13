@@ -18,6 +18,11 @@
 #ifndef OPENSSL_NO_ENGINE
 #include <openssl/engine.h>
 #endif  // !OPENSSL_NO_ENGINE
+#ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#include <Security/Security.h>
+#endif
+
 
 namespace node {
 
@@ -222,6 +227,272 @@ unsigned long LoadCertsFromFile(  // NOLINT(runtime/int)
   }
 }
 
+enum TrustStatus { UNSPECIFIED, TRUSTED, DISTRUSTED };
+
+std::string stdStringFromCF(CFStringRef s) {
+  if (auto fastCString = CFStringGetCStringPtr(s, kCFStringEncodingUTF8)) {
+    return std::string(fastCString);
+  }
+  auto utf16length = CFStringGetLength(s);
+  auto maxUtf8len = CFStringGetMaximumSizeForEncoding(utf16length,
+                                                      kCFStringEncodingUTF8);
+  std::string converted(maxUtf8len, '\0');
+
+  CFStringGetCString(s, converted.data(), maxUtf8len, kCFStringEncodingUTF8);
+  converted.resize(std::strlen(converted.data()));
+
+  return converted;
+}
+
+std::string getCertIssuer(X509* cert) {
+  ClearErrorOnReturn clearErrorOnReturn;
+  if (cert == nullptr) return {};
+  BIO* bio = BIO_new(BIO_s_mem());
+  if (bio == nullptr) {
+    return nullptr;
+  }
+  if (X509_NAME_print_ex(
+          bio, X509_get_issuer_name(cert), 0, XN_FLAG_ONELINE) <=
+      0) {
+    return {};
+      }
+
+  const int resultLen = BIO_pending(bio);
+  char* issuer = reinterpret_cast<char *>(calloc(resultLen + 1, 1));
+  BIO_read(bio, issuer, resultLen);
+  BIO_free_all(bio);
+
+  std::string str(issuer);
+  return str;
+}
+
+std::string getCertSubject(X509* cert) {
+  ClearErrorOnReturn clearErrorOnReturn;
+  if (cert == nullptr) return {};
+  BIO* bio = BIO_new(BIO_s_mem());
+  if (bio == nullptr) {
+    return nullptr;
+  }
+  if (X509_NAME_print_ex(
+          bio, X509_get_subject_name(cert), 0, XN_FLAG_ONELINE) <=
+      0) {
+    return {};
+      }
+
+  const int resultLen = BIO_pending(bio);
+  char* issuer = reinterpret_cast<char *>(calloc(resultLen + 1, 1));
+  BIO_read(bio, issuer, resultLen);
+  BIO_free_all(bio);
+
+  std::string str(issuer);
+  return str;
+}
+
+bool IsSelfSigned(X509* cert) {
+  auto issuerName = getCertIssuer(cert);
+  auto subjectName = getCertSubject(cert);
+
+  if (issuerName == subjectName) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+enum TrustStatus IsTrustDictionaryTrustedForPolicy(
+                                       CFDictionaryRef trust_dict
+                                    ) {
+  // Trust settings may be scoped to a single application
+  // skip as this is not supported
+  if (CFDictionaryContainsKey(trust_dict, kSecTrustSettingsApplication)) {
+    return UNSPECIFIED;
+  }
+
+  // Trust settings may be scoped using policy-specific constraints. For
+  // example, SSL trust settings might be scoped to a single hostname, or EAP
+  // settings specific to a particular WiFi network.
+  // As this is not presently supported, skip any policy-specific trust
+  // settings.
+  if (CFDictionaryContainsKey(trust_dict, kSecTrustSettingsPolicyString)) {
+    return UNSPECIFIED;
+  }
+
+  int trust_settings_result = kSecTrustSettingsResultTrustRoot;
+  if (CFDictionaryContainsKey(trust_dict, kSecTrustSettingsResult)) {
+    CFNumberRef trust_settings_result_ref = (CFNumberRef) CFDictionaryGetValue(
+        trust_dict, kSecTrustSettingsResult);
+
+    CFNumberGetValue(trust_settings_result_ref, kCFNumberIntType,
+                     &trust_settings_result);
+
+    if (!trust_settings_result_ref) {
+      return UNSPECIFIED;
+    }
+
+    if (trust_settings_result == kSecTrustSettingsResultDeny) {
+      return DISTRUSTED;
+    }
+    return trust_settings_result == kSecTrustSettingsResultTrustRoot ||
+           trust_settings_result == kSecTrustSettingsResultTrustAsRoot ?
+               TRUSTED : UNSPECIFIED;
+  }
+
+  return UNSPECIFIED;
+}
+
+bool IsTrustSettingsTrustedForPolicy(CFArrayRef trustSettings,
+                                            bool isSelfIssued) {
+  // The trustSettings parameter can return a valid but empty CFArrayRef.
+  // This empty trust-settings array means “always trust this certificate”
+  // with an overall trust setting for the certificate of
+  // kSecTrustSettingsResultTrustRoot
+  if (CFArrayGetCount(trustSettings) == 0) {
+    if (isSelfIssued) {
+      return true;
+    }
+  }
+
+  CFIndex trustSettingsCount = CFArrayGetCount(trustSettings);
+
+  for (CFIndex i = 0; i < trustSettingsCount ; ++i) {
+    CFDictionaryRef trustDict = (CFDictionaryRef) CFArrayGetValueAtIndex(
+        trustSettings, i);
+
+    enum TrustStatus trust = IsTrustDictionaryTrustedForPolicy(trustDict);
+
+    if (trust == DISTRUSTED) {
+      return false;
+    } else if (trust == TRUSTED) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsCertificateTrustValid(SecCertificateRef ref) {
+  SecTrustRef secTrust = nullptr;
+  CFMutableArrayRef subjCerts = CFArrayCreateMutable(
+      nullptr, 1, &kCFTypeArrayCallBacks);
+  CFArraySetValueAtIndex(subjCerts, 0, ref);
+
+  SecPolicyRef policy = SecPolicyCreateBasicX509();
+  OSStatus ortn = SecTrustCreateWithCertificates(subjCerts, policy, &secTrust);
+  bool result = false;
+  if (ortn) {
+    /* should never happen */
+    goto errOut;
+  }
+
+  result = SecTrustEvaluateWithError(secTrust, nullptr);
+  errOut:
+     if (policy) {
+       CFRelease(policy);
+     }
+  if (secTrust) {
+    CFRelease(secTrust);
+  }
+  if (subjCerts) {
+    CFRelease(subjCerts);
+  }
+  return result;
+}
+
+bool IsCertificateTrustedForPolicy(X509* cert, SecCertificateRef ref) {
+  OSStatus err;
+
+  for (const auto& trust_domain :
+       {kSecTrustSettingsDomainUser, kSecTrustSettingsDomainAdmin}) {
+    CFArrayRef trustSettings;
+    err = SecTrustSettingsCopyTrustSettings(ref, trust_domain, &trustSettings);
+
+    bool isSelfSigned = IsSelfSigned(cert);
+
+    if (err == errSecSuccess && trustSettings != nullptr) {
+      return IsTrustSettingsTrustedForPolicy(trustSettings, isSelfSigned);
+    }
+
+    // An empty trust settings array isn’t the same as no trust settings,
+    // where the trustSettings parameter returns NULL.
+    // No trust-settings array means
+    // “this certificate must be verifiable using a known trusted certificate”.
+    if (trustSettings == nullptr) {
+      return IsCertificateTrustValid(ref);
+    }
+  }
+  return false;
+}
+
+void ReadMacOSKeychainCertificates(
+    std::vector<std::string>* system_root_certificates) {
+  CFTypeRef searchKeys[] = { kSecClass, kSecMatchLimit, kSecReturnRef };
+  CFTypeRef searchValues[] = {
+      kSecClassCertificate, kSecMatchLimitAll, kCFBooleanTrue };
+  CFDictionaryRef search = CFDictionaryCreate(
+      kCFAllocatorDefault, searchKeys, searchValues, 3,
+      &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+
+  CFArrayRef currAnchors = nullptr;
+  OSStatus ortn = SecItemCopyMatching(
+      search,
+      reinterpret_cast<CFTypeRef *>(&currAnchors));
+
+  if (ortn) {
+      fprintf(stderr, "ERROR: SecItemCopyMatching failed %d\n", ortn);
+  }
+
+  CFIndex count = CFArrayGetCount(currAnchors);
+
+  std::vector<X509*> system_root_certificates_X509;
+  for (int i = 0; i < count ; ++i) {
+    SecCertificateRef certRef = (SecCertificateRef) CFArrayGetValueAtIndex(
+        currAnchors, i);
+
+    CFStringRef certSummary = SecCertificateCopySubjectSummary(certRef);
+    std::string stdCertSummary = stdStringFromCF(certSummary);
+
+      CFDataRef derData = SecCertificateCopyData(certRef);
+      if (!derData) {
+        fprintf(stderr, "ERROR: SecCertificateCopyData failed\n");
+        continue;
+      }
+      auto dataBufferPointer = CFDataGetBytePtr(derData);
+
+      X509* cert =
+        d2i_X509(nullptr, &dataBufferPointer, CFDataGetLength(derData));
+      CFRelease(derData);
+    bool isValid = IsCertificateTrustedForPolicy(cert, certRef);
+    if (isValid) {
+      system_root_certificates_X509.emplace_back(cert);
+    }
+  }
+
+
+  for (size_t i = 0; i < system_root_certificates_X509.size(); i++) {
+    BIOPointer bio(BIO_new(BIO_s_mem()));
+    CHECK(bio);
+
+    BUF_MEM* mem = nullptr;
+    int result = PEM_write_bio_X509(bio.get(),
+                                    system_root_certificates_X509[i]);
+    if (!result) {
+      fprintf(stderr, "Warning: PEM_write_bio_X509 failed with: %d", result);
+      continue;
+    }
+
+    BIO_get_mem_ptr(bio.get(), &mem);
+    std::string certificate_string_pem(mem->data, mem->length);
+
+    system_root_certificates->emplace_back(certificate_string_pem);
+  }
+}
+
+void ReadSystemStoreCertificates(
+    std::vector<std::string>* system_root_certificates) {
+#ifdef __APPLE__
+  ReadMacOSKeychainCertificates(system_root_certificates);
+#endif
+}
+
 X509_STORE* NewRootCertStore() {
   static std::vector<X509*> root_certs_vector;
   static bool root_certs_vector_loaded = false;
@@ -230,9 +501,21 @@ X509_STORE* NewRootCertStore() {
 
   if (!root_certs_vector_loaded) {
     if (per_process::cli_options->ssl_openssl_cert_store == false) {
+      std::vector<std::string> combined_root_certs;
+
+      for (size_t i = 0; i < arraysize(root_certs); i++) {
+        combined_root_certs.emplace_back(root_certs[i]);
+      }
+
+      if (per_process::cli_options->use_system_ca) {
+        ReadSystemStoreCertificates(&combined_root_certs);
+      }
+
       for (size_t i = 0; i < arraysize(root_certs); i++) {
         X509* x509 = PEM_read_bio_X509(
-            NodeBIO::NewFixed(root_certs[i], strlen(root_certs[i])).get(),
+            NodeBIO::NewFixed(combined_root_certs[i].data(),
+                              combined_root_certs[i].length())
+                .get(),
             nullptr,  // no re-use of X509 structure
             NoPasswordCallback,
             nullptr);  // no callback data
@@ -282,19 +565,31 @@ X509_STORE* NewRootCertStore() {
 
 void GetRootCertificates(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
-  Local<Value> result[arraysize(root_certs)];
+  std::vector<std::string> combined_root_certs;
 
   for (size_t i = 0; i < arraysize(root_certs); i++) {
+    combined_root_certs.emplace_back(root_certs[i]);
+  }
+
+  if (per_process::cli_options->use_system_ca) {
+    ReadSystemStoreCertificates(&combined_root_certs);
+  }
+
+  std::vector<Local<Value>> result(combined_root_certs.size());
+
+  for (size_t i = 0; i < combined_root_certs.size(); i++) {
     if (!String::NewFromOneByte(
             env->isolate(),
-            reinterpret_cast<const uint8_t*>(root_certs[i]))
-            .ToLocal(&result[i])) {
+            reinterpret_cast<const uint8_t*>(combined_root_certs[i].data()),
+                      v8::NewStringType::kNormal,
+                      combined_root_certs[i].size())
+                      .ToLocal(&result[i])) {
       return;
     }
   }
 
   args.GetReturnValue().Set(
-      Array::New(env->isolate(), result, arraysize(root_certs)));
+      Array::New(env->isolate(), result.data(), combined_root_certs.size()));
 }
 
 bool SecureContext::HasInstance(Environment* env, const Local<Value>& value) {
