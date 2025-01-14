@@ -754,8 +754,8 @@ void DatabaseSync::Exec(const FunctionCallbackInfo<Value>& args) {
   CHECK_ERROR_OR_THROW(env->isolate(), db->connection_, r, SQLITE_OK, void());
 }
 
-// database.backup(path, { sourceDb, targetDb, rate, progress: (total,
-// remaining) => {} )
+// database.backup(path, { source, target, rate, progress: ({ totalPages,
+// remainingPages }) => {} )
 void DatabaseSync::Backup(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
@@ -803,7 +803,7 @@ void DatabaseSync::Backup(const FunctionCallbackInfo<Value>& args) {
     }
 
     Local<Value> sourceDbValue;
-    if (!options->Get(env->context(), env->source_db_string())
+    if (!options->Get(env->context(), env->source_string())
              .ToLocal(&sourceDbValue)) {
       return;
     }
@@ -812,7 +812,7 @@ void DatabaseSync::Backup(const FunctionCallbackInfo<Value>& args) {
       if (!sourceDbValue->IsString()) {
         THROW_ERR_INVALID_ARG_TYPE(
             env->isolate(),
-            "The \"options.sourceDb\" argument must be a string.");
+            "The \"options.source\" argument must be a string.");
         return;
       }
 
@@ -821,7 +821,7 @@ void DatabaseSync::Backup(const FunctionCallbackInfo<Value>& args) {
     }
 
     Local<Value> targetDbValue;
-    if (!options->Get(env->context(), env->target_db_string())
+    if (!options->Get(env->context(), env->target_string())
              .ToLocal(&targetDbValue)) {
       return;
     }
