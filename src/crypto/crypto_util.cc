@@ -196,6 +196,23 @@ void TestFipsCrypto(const v8::FunctionCallbackInfo<v8::Value>& args) {
   args.GetReturnValue().Set(ncrypto::testFipsEnabled() ? 1 : 0);
 }
 
+void GetOpenSSLSecLevelCrypto(const FunctionCallbackInfo<Value>& args) {
+  Environment* env = Environment::GetCurrent(args);
+
+  auto ctx = SSLCtxPointer::New();
+  if (!ctx) {
+    return ThrowCryptoError(env, ERR_get_error(), "SSL_CTX_new");
+  }
+
+  auto ssl = SSLPointer::New(ctx);
+  if (!ssl) {
+    return ThrowCryptoError(env, ERR_get_error(), "SSL_new");
+  }
+
+  int secLevel = SSL_get_security_level(ssl);
+  args.GetReturnValue().Set(secLevel);
+}
+
 void CryptoErrorStore::Capture() {
   errors_.clear();
   while (const uint32_t err = ERR_get_error()) {
@@ -699,6 +716,9 @@ void Initialize(Environment* env, Local<Object> target) {
 
   SetMethod(context, target, "secureBuffer", SecureBuffer);
   SetMethod(context, target, "secureHeapUsed", SecureHeapUsed);
+
+  SetMethodNoSideEffect(
+      context, target, "getOpenSSLSecLevelCrypto", GetOpenSSLSecLevelCrypto);
 }
 void RegisterExternalReferences(ExternalReferenceRegistry* registry) {
 #ifndef OPENSSL_NO_ENGINE
@@ -710,6 +730,7 @@ void RegisterExternalReferences(ExternalReferenceRegistry* registry) {
   registry->Register(TestFipsCrypto);
   registry->Register(SecureBuffer);
   registry->Register(SecureHeapUsed);
+  registry->Register(GetOpenSSLSecLevelCrypto);
 }
 
 }  // namespace Util

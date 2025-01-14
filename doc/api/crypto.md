@@ -4165,6 +4165,16 @@ const {
 console.log(getHashes()); // ['DSA', 'DSA-SHA', 'DSA-SHA1', ...]
 ```
 
+### `crypto.getOpenSSLSecLevel()`
+
+<!-- YAML
+added: REPLACEME
+-->
+
+* Returns: {number} The [`default OpenSSL security level`][].
+  Useful to be able to adjust based on the algorithms available given the
+  security level.
+
 ### `crypto.getRandomValues(typedArray)`
 
 <!-- YAML
@@ -6177,6 +6187,7 @@ See the [list of SSL OP Flags][] for details.
 [`crypto.webcrypto.subtle`]: webcrypto.md#class-subtlecrypto
 [`decipher.final()`]: #decipherfinaloutputencoding
 [`decipher.update()`]: #decipherupdatedata-inputencoding-outputencoding
+[`default OpenSSL security level`]: https://docs.openssl.org/3.3/man3/SSL_CTX_set_security_level/#default-callback-behaviour
 [`diffieHellman.generateKeys()`]: #diffiehellmangeneratekeysencoding
 [`diffieHellman.setPublicKey()`]: #diffiehellmansetpublickeypublickey-encoding
 [`ecdh.generateKeys()`]: #ecdhgeneratekeysencoding-format
