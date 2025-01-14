@@ -209,8 +209,8 @@ void GetOpenSSLSecLevelCrypto(const FunctionCallbackInfo<Value>& args) {
     return ThrowCryptoError(env, ERR_get_error(), "SSL_new");
   }
 
-  int secLevel = SSL_get_security_level(ssl);
-  args.GetReturnValue().Set(secLevel);
+  int sec_level = SSL_get_security_level(ssl);
+  args.GetReturnValue().Set(sec_level);
 }
 
 void CryptoErrorStore::Capture() {
