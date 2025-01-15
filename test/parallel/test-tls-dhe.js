@@ -34,6 +34,7 @@ const { once } = require('events');
 const tls = require('tls');
 const { execFile } = require('child_process');
 const fixtures = require('../common/fixtures');
+const secLevel = require('crypto').getOpenSSLSecLevel();
 
 const key = fixtures.readKey('agent2-key.pem');
 const cert = fixtures.readKey('agent2-cert.pem');
@@ -43,7 +44,7 @@ const dheCipher = 'DHE-RSA-AES128-SHA256';
 const ecdheCipher = 'ECDHE-RSA-AES128-SHA256';
 const ciphers = `${dheCipher}:${ecdheCipher}`;
 
-if (!common.hasOpenSSL(3, 2)) {
+if (secLevel < 2) {
   // Test will emit a warning because the DH parameter size is < 2048 bits
   // when the test is run on versions lower than OpenSSL32
   common.expectWarning('SecurityWarning',
@@ -107,7 +108,7 @@ function testCustomParam(keylen, expectedCipher) {
   }, /DH parameter is less than 1024 bits/);
 
   // Custom DHE parameters are supported (but discouraged).
-  if (!common.hasOpenSSL(3, 2)) {
+  if (secLevel < 2) {
     await testCustomParam(1024, dheCipher);
   } else {
     await testCustomParam(3072, dheCipher);
