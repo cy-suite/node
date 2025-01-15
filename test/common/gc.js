@@ -40,13 +40,18 @@ function onGC(obj, gcListener) {
 
 /**
  * Repeatedly triggers garbage collection until a specified condition is met or a maximum number of attempts is reached.
+ * This utillity must be run in a Node.js instance that enables --expose-gc.
  * @param {string|Function} [name] - Optional name, used in the rejection message if the condition is not met.
  * @param {Function} condition - A function that returns true when the desired condition is met.
+ * @param {number} maxCount - Maximum number of garbage collections that should be tried.
+ * @param {object} gcOptions - Options to pass into the global gc() function.
  * @returns {Promise} A promise that resolves when the condition is met, or rejects after 10 failed attempts.
  */
-function gcUntil(name, condition) {
+function gcUntil(name, condition, maxCount = 10, gcOptions) {
   if (typeof name === 'function') {
     condition = name;
+    maxCount = condition;
+    gcOptions = maxCount;
     name = undefined;
   }
   return new Promise((resolve, reject) => {
@@ -54,10 +59,10 @@ function gcUntil(name, condition) {
     function gcAndCheck() {
       setImmediate(() => {
         count++;
-        global.gc();
+        global.gc(gcOptions);
         if (condition()) {
           resolve();
-        } else if (count < 10) {
+        } else if (count < maxCount) {
           gcAndCheck();
         } else {
           reject(name === undefined ? undefined : 'Test ' + name + ' failed');
