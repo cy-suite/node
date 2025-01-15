@@ -2821,6 +2821,13 @@ environment variables.
 
 See `SSL_CERT_DIR` and `SSL_CERT_FILE`.
 
+### `--use-system-ca`
+
+Node.js uses the trusted CA certificates present in the system store along with
+the `--use-bundled-ca`, `--use-openssl-ca` options.
+
+This option is available to macOS only.
+
 ### `--use-largepages=mode`
 
 <!-- YAML
@@ -3240,6 +3247,7 @@ one is included in the list below.
 * `--use-bundled-ca`
 * `--use-largepages`
 * `--use-openssl-ca`
+* `--use-system-ca`
 * `--v8-pool-size`
 * `--watch-path`
 * `--watch-preserve-output`
